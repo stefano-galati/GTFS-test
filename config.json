@@ -1,0 +1,9 @@
+{
+  "sqlitePath": "./gtt_gtfs.sqlite",
+  "agencies": [
+    {
+      "url": "https://www.gtt.to.it/open_data/gtt_gtfs.zip",
+      "exclude": []
+    }
+  ]
+}
