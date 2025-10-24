@@ -1,17 +1,29 @@
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
 import fetch from "node-fetch";
-import fs from "fs";
-import csv from "csv-parser";
 import { openDb, getRoutes } from 'gtfs';
-import { readFile } from 'fs/promises';
-import path from 'node:path';
 import mongoose from 'mongoose';
 import dotenv from "dotenv";
+import { MongoClient } from "mongodb";
+
+
+
 dotenv.config();
 
 const uri = process.env.MONGO_URI;
 
-async function getRealtimeData(tripIds) {
+
+const client = new MongoClient(uri);
+
+await client.connect()
+  .then(() => console.log('✅ Connected to MongoDB Atlas'))
+  .catch(err => console.error('❌ Connection error:', err));
+
+const db = client.db("gtt-static-gtfs");
+const trips = db.collection("trips");
+const stopTimes = db.collection("stop_times");
+const stops = db.collection("stops");
+
+async function getRealtimeData() {
   try {
     const response = await fetch("http://percorsieorari.gtt.to.it/das_gtfsrt/trip_update.aspx");
     if (!response.ok) {
@@ -25,8 +37,7 @@ async function getRealtimeData(tripIds) {
       new Uint8Array(buffer)
     );
     
-    //console.log(JSON.stringify(feed.entity[0], null, 2));
-    return feed.entity.filter(x => tripIds.includes(x.id));
+    return feed
   }
   catch (error) {
     console.log(error);
@@ -34,119 +45,63 @@ async function getRealtimeData(tripIds) {
   }
 }
 
-function getStaticArrivalTimes(stopId) {
-  const time = new Date();
-  const timeString = time.toTimeString().slice(0, 8); // "hh:mm:ss"
-  const maxTime = new Date(time.getTime() + 60 * 60 * 1000); // 1 hour from now
-  const maxTimeString = maxTime.toTimeString().slice(0, 8); // "hh:mm:ss"
+const time = new Date();
+const hours = time.getHours()
+const minutes = time.getMinutes()
+const seconds = time.getSeconds()
 
-  const results = [];
+const timeString = hours.toString().padStart(2, "0") + ":" + minutes.toString().padStart(2, "0") + ":" + seconds.toString().padStart(2, "0");
+const nextHourString = (hours == 23 ? "00" : (hours + 1).toString().padStart(2, "0")) + ":" + minutes.toString().padStart(2, "0") + ":" + seconds.toString().padStart(2, "0");
+const previousHourString = (hours == 0 ? "23" : (hours - 1).toString().padStart(2, "0")) + ":" + minutes.toString().padStart(2, "0") + ":" + seconds.toString().padStart(2, "0");
 
-  return new Promise((resolve, reject) => {
 
-    fs.createReadStream("./gtt_gtfs/stop_times.txt")
-      .pipe(csv())
-      .on("data", (data) => {
-        if (data.stop_id == stopId 
-          // && data.arrival_time >= timeString
-          // && data.arrival_time < maxTimeString
-        ) 
-          results.push(data);
-      })
-      .on("end", () => resolve(results))
-      .on("error", reject);
+//start from stop_code
+const stopCode = "40";
+const foundStop = await stops.findOne({ stop_code: stopCode });
+//get stop_id
+const foundStopId = foundStop.stop_id;
+//get stop_times for that stop_id
+console.log(previousHourString, timeString, nextHourString);
 
-      return results;
-  });
+let foundStopTimes;
+if(previousHourString > nextHourString){
+  foundStopTimes = await stopTimes.find({ stop_id: foundStopId, $or: [ { arrival_time: { $gte: previousHourString } }, { arrival_time: { $lte: nextHourString } } ] }).toArray();
+}
+else{
+  foundStopTimes = await stopTimes.find({ stop_id: foundStopId, arrival_time: {$gte: previousHourString, $lte: nextHourString}}).toArray();
 }
 
-function getStops() {
-  const results = [];
+//get trip_ids from stop_times
+let infos = foundStopTimes.map(async s => {
+  const routeId = await trips.findOne({ trip_id: s.trip_id }).then(t => t.route_id);
+  return { "route_id": routeId, "trip_id": s.trip_id, "arrival_time": s.arrival_time, "stop_sequence": s.stop_sequence }
+});
+infos = await Promise.all(infos);
 
-  return new Promise((resolve, reject) => {
+//get realtime data
+const realtimeData =  await getRealtimeData();
+//console.log(JSON.stringify(realtimeData, null, 2));
 
-    fs.createReadStream("./gtt_gtfs/stops.txt")
-      .pipe(csv())
-      .on("data", (data) => results.push(data))
-      .on("end", () => resolve(results))
-      .on("error", reject);
+// console.log(realtimeData.entity.map(e => e.id));
+// console.log(infos.map(t => t.trip_id));
 
-      return results;
+const entityList = [];
+
+realtimeData.entity.forEach(e => {
+  infos.forEach(i => {
+    if (e.id == i.trip_id) {
+      if(e.tripUpdate && e.tripUpdate.stopTimeUpdate.some(stu => stu.stopSequence == i.stop_sequence)){
+        const delay = e.tripUpdate.stopTimeUpdate.find(stu => stu.stopSequence == i.stop_sequence).arrival.delay;
+        entityList.push({
+          ...i,
+          delay: (delay>=86400) ? (delay-86400) : delay //correct delay if greater than 24 hours
+        });
+      }
+      //print realtime entities that have an id of a trip in the chosen time interval which stops at the chosen stop
+      //console.log(i, JSON.stringify(e, null, 2));
+    }
   });
-}
+});
 
-function getTrips(tripIds) {
-  const results = [];
-
-  return new Promise((resolve, reject) => {
-    fs.createReadStream("./gtt_gtfs/trips.txt")
-      .pipe(csv())
-      .on("data", (data) => results.push(data))
-      .on("end", () => {
-        resolve(results);
-      })
-      .on("error", reject);
-
-      return results.filter(x => tripIds.includes(x.trip_id));
-  });
-};
-
-async function example() {
-  
-  const stopCode = "408";
-
-  //get stopId from stopCode
-  const stops = await getStops();
-  const stop = stops.find(x => x.stop_code == stopCode);
-  if (!stop) {
-    console.log("Stop not found");
-    return;
-  }
-  const stopId = stop.stop_id;
-  //console.log("Stop " + stopId);
-
-  //get static arrival times for the stopId
-  const staticData = await getStaticArrivalTimes(stopId);
-  //console.log(staticData);
-
-  let trips = staticData.map(x => ({ trip_id: x.trip_id, stop_sequence: x.stop_sequence, arrival_time: x.arrival_time }));
-  
-  const tripsMapping = await getTrips(trips.map(x => x.trip_id));
-  //console.log(tripsMapping);
-
-  trips = trips.map(x => {
-    const lineNumber = tripsMapping.find(y => y.trip_id == x.trip_id)?.route_id;
-    return { ...x, line: lineNumber };
-  });
-
-  const realtimeData = await getRealtimeData(trips.map(x => x.trip_id));
-  //console.log(JSON.stringify(realtimeData, null, 2));
-
-  //console.log("Static");
-  //console.log(trips.map(x => x.trip_id));
-
-  //console.log("Real-time");
-  //realtimeData.forEach(x => console.log(x.id));
-
-  realtimeData.forEach(x => {
-    const trip = trips.find(y => y.trip_id == x.id);
-    const stopTimeUpdate = x.tripUpdate.stopTimeUpdate.find(y => y.stopSequence == trip.stop_sequence);
-
-    console.log(trip);
-    console.log(x.tripUpdate.stopTimeUpdate[0]);
-
-  });
-
-  // trips.forEach(trip => {
-  //   const foundTrip = realtimeData.find(x => x.id == trip.trip_id);
-  //   if(foundTrip){
-  //     //console.log(foundTrip.tripUpdate.stopTimeUpdate);
-  //     const foundDelay = foundTrip.tripUpdate.stopTimeUpdate.find(x => x.stopSequence == trip.stop_sequence);
-  //     if (foundDelay) {
-  //       console.log(trip.line ,trip.arrival_time, foundDelay.arrival.delay);
-  //     }
-  //   }
-  // });
-}
-
-example();
+console.log(JSON.stringify(entityList, null, 2));
+process.exit(0);
