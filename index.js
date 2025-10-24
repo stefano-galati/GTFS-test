@@ -5,23 +5,11 @@ import csv from "csv-parser";
 import { openDb, getRoutes } from 'gtfs';
 import { readFile } from 'fs/promises';
 import path from 'node:path';
+import mongoose from 'mongoose';
+import dotenv from "dotenv";
+dotenv.config();
 
-/*
-const config = JSON.parse(
-  await readFile(path.join(import.meta.dirname, 'config.json'), 'utf8')
-);
-
-const db = openDb(config);
-
-const routes = getRoutes(
-  {}, // No query filters
-  ['route_id', 'route_short_name', 'route_color'], // Only return these fields
-  [['route_short_name', 'ASC']], // Sort by this field and direction
-  { db: db }, // Options for the query. Can specify which database to use if more than one are open
-);
-
-console.log(routes);
-*/
+const uri = process.env.MONGO_URI;
 
 async function getRealtimeData(tripIds) {
   try {
