@@ -7,15 +7,14 @@ import { getRealTimeSchedule } from './index.js';
 dotenv.config();
 
 const app = express();
+app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
-function getData(stop){
-    return { stop: stop, data: "Sample data for stop " + stop };
-}
-
 // API route
-app.get('/api', async (req, res) => {
-  const stop = req.query.stop;
+app.post('/api', async (req, res) => {
+  console.log(req.body);
+  const stop = req.body.stops;
+  
   if (stop) {
     const data = await getRealTimeSchedule(stop);
     res.status(200).json(data);

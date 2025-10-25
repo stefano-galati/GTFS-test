@@ -18,11 +18,12 @@ function getRealArrivalTime(scheduledTime, delay) {
 
 function changeFormat(entityList) {
   return entityList.map(e => {
+    const stop = e.stop;
     const line = e.route_id.slice(0, -1);
     const arrivalTime = getRealArrivalTime(e.arrival_time, e.delay);
     const delay = e.delay;
 
-    return {"line": line, "hour": arrivalTime, "delay": delay, "realtime": true};
+    return {"stop": stop, "line": line, "hour": arrivalTime, "delay": delay, "realtime": true};
   });
 }
 
@@ -47,7 +48,9 @@ async function getRealtimeData() {
   }
 }
 
-export async function getRealTimeSchedule(stopCode) {
+export async function getRealTimeSchedule(stopCodes) {
+  console.log(stopCodes);
+
   dotenv.config();
 
   const uri = process.env.MONGO_URI;
@@ -72,28 +75,43 @@ export async function getRealTimeSchedule(stopCode) {
   const nextHourOverflowString = (hours + 1).toString().padStart(2, "0") + ":" + minutes.toString().padStart(2, "0") + ":" + seconds.toString().padStart(2, "0");
   const previousHourString = (hours == 0 ? "23" : (hours - 1).toString().padStart(2, "0")) + ":" + minutes.toString().padStart(2, "0") + ":" + seconds.toString().padStart(2, "0");
 
-
   //start from stop_code
-  const foundStop = await stops.findOne({ stop_code: stopCode });
+  const foundStops = await stops.find({ stop_code: { $in: stopCodes } }).toArray();
   //get stop_id
-  const foundStopId = foundStop.stop_id;
-  //get stop_times for that stop_id
+  const foundStopCodesIds = foundStops.map(s => ({"stop_id": s.stop_id, "stop_code": s.stop_code}));
+  const foundStopsId = foundStopCodesIds.map(s => s.stop_id);
   console.log(previousHourString, timeString, nextHourString);
 
   let foundStopTimes;
   if(previousHourString > nextHourString){
-    foundStopTimes = await stopTimes.find({ stop_id: foundStopId, $or: [ { arrival_time: { $gte: previousHourString } }, { arrival_time: { $lte: nextHourString } }, { arrival_time: { $gte:previousHourString, $lte: nextHourOverflowString } } ] }).toArray();
+    foundStopTimes = await stopTimes.find({ 
+      stop_id: { $in: foundStopsId }, 
+      $or: [ 
+        { arrival_time: { $gte: previousHourString } }, 
+        { arrival_time: { $lte: nextHourString } }, 
+        { arrival_time: { $gte:previousHourString, $lte: nextHourOverflowString } } 
+      ] 
+    }).toArray();
   }
   else{
-    foundStopTimes = await stopTimes.find({ stop_id: foundStopId, arrival_time: {$gte: previousHourString, $lte: nextHourString}}).toArray();
+    foundStopTimes = await stopTimes.find({ 
+      stop_id: { $in: foundStopsId }, 
+      arrival_time: {
+        $gte: previousHourString, 
+        $lte: nextHourString
+      }}).toArray();
   }
+  //foundStopTimes = [{stop1Time1}, {stop1Time2}, {stop2Time1}, {stop2Time2} ...]
 
   //get trip_ids from stop_times
   let infos = foundStopTimes.map(async s => {
     const routeId = await trips.findOne({ trip_id: s.trip_id }).then(t => t.route_id);
-    return { "route_id": routeId, "trip_id": s.trip_id, "arrival_time": s.arrival_time, "stop_sequence": s.stop_sequence }
+    const stopCode = foundStopCodesIds.find(sc => sc.stop_id === s.stop_id).stop_code;
+    return {"stop": stopCode, "route_id": routeId, "trip_id": s.trip_id, "arrival_time": s.arrival_time, "stop_sequence": s.stop_sequence }
   });
   infos = await Promise.all(infos);
+
+  console.log(infos);
 
   //get realtime data
   const realtimeData =  await getRealtimeData();

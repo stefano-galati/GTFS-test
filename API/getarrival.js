@@ -1,9 +1,9 @@
 import { getRealTimeSchedule } from '../index.js';
 
 export async function handler(event, context) {
-  const stop = event.queryStringParameters?.stop;
+  const stops = event.body ? JSON.parse(event.body).stops : null;
 
-  if (!stop) {
+  if (!stops) {
     return {
       statusCode: 400,
       headers: {
@@ -15,7 +15,7 @@ export async function handler(event, context) {
     };
   }
 
-  const data = await getRealTimeSchedule(stop);
+  const data = await getRealTimeSchedule(stops);
 
   return {
     statusCode: 200,
