@@ -52,11 +52,12 @@ const seconds = time.getSeconds()
 
 const timeString = hours.toString().padStart(2, "0") + ":" + minutes.toString().padStart(2, "0") + ":" + seconds.toString().padStart(2, "0");
 const nextHourString = (hours == 23 ? "00" : (hours + 1).toString().padStart(2, "0")) + ":" + minutes.toString().padStart(2, "0") + ":" + seconds.toString().padStart(2, "0");
+const nextHourOverflowString = (hours + 1).toString().padStart(2, "0") + ":" + minutes.toString().padStart(2, "0") + ":" + seconds.toString().padStart(2, "0");
 const previousHourString = (hours == 0 ? "23" : (hours - 1).toString().padStart(2, "0")) + ":" + minutes.toString().padStart(2, "0") + ":" + seconds.toString().padStart(2, "0");
 
 
 //start from stop_code
-const stopCode = "40";
+const stopCode = "408";
 const foundStop = await stops.findOne({ stop_code: stopCode });
 //get stop_id
 const foundStopId = foundStop.stop_id;
@@ -65,7 +66,7 @@ console.log(previousHourString, timeString, nextHourString);
 
 let foundStopTimes;
 if(previousHourString > nextHourString){
-  foundStopTimes = await stopTimes.find({ stop_id: foundStopId, $or: [ { arrival_time: { $gte: previousHourString } }, { arrival_time: { $lte: nextHourString } } ] }).toArray();
+  foundStopTimes = await stopTimes.find({ stop_id: foundStopId, $or: [ { arrival_time: { $gte: previousHourString } }, { arrival_time: { $lte: nextHourString } }, { arrival_time: { $gte:previousHourString, $lte: nextHourOverflowString } } ] }).toArray();
 }
 else{
   foundStopTimes = await stopTimes.find({ stop_id: foundStopId, arrival_time: {$gte: previousHourString, $lte: nextHourString}}).toArray();
@@ -80,14 +81,15 @@ infos = await Promise.all(infos);
 
 //get realtime data
 const realtimeData =  await getRealtimeData();
-//console.log(JSON.stringify(realtimeData, null, 2));
-
+// console.log(JSON.stringify(realtimeData, null, 2));
+console.log(`Fetched ${realtimeData.entity.length} realtime entities`);
 // console.log(realtimeData.entity.map(e => e.id));
 // console.log(infos.map(t => t.trip_id));
 
 const entityList = [];
 
 realtimeData.entity.forEach(e => {
+  console.log(e.id);
   infos.forEach(i => {
     if (e.id == i.trip_id) {
       if(e.tripUpdate && e.tripUpdate.stopTimeUpdate.some(stu => stu.stopSequence == i.stop_sequence)){
@@ -98,7 +100,7 @@ realtimeData.entity.forEach(e => {
         });
       }
       //print realtime entities that have an id of a trip in the chosen time interval which stops at the chosen stop
-      //console.log(i, JSON.stringify(e, null, 2));
+      console.log(i, JSON.stringify(e, null, 2));
     }
   });
 });
