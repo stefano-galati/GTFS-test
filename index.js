@@ -22,7 +22,7 @@ function changeFormat(entityList) {
     const arrivalTime = getRealArrivalTime(e.arrival_time, e.delay);
     const delay = e.delay;
 
-    return {"line": line, "arrival_time": arrivalTime, "delay": delay, "realtime": true};
+    return {"line": line, "hour": arrivalTime, "delay": delay, "realtime": true};
   });
 }
 
