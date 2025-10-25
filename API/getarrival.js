@@ -6,6 +6,11 @@ export async function handler(event, context) {
   if (!stop) {
     return {
       statusCode: 400,
+      headers: {
+        "Access-Control-Allow-Origin": "*", // allow all origins
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
       body: JSON.stringify({ error: 'Missing stop parameter' }),
     };
   }
@@ -14,7 +19,12 @@ export async function handler(event, context) {
 
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      "Access-Control-Allow-Origin": "*", // allow all origins
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type", 
+    },
     body: JSON.stringify(data),
   };
 }

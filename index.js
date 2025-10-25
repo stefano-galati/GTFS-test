@@ -63,7 +63,7 @@ export async function getRealTimeSchedule(stopCode) {
   const stops = db.collection("stops");
 
   const time = new Date();
-  const hours = time.getHours()
+  const hours = time.getHours() //server runs in UTC, but we are in UTC+2 => add env var TZ="Europe/Rome"
   const minutes = time.getMinutes()
   const seconds = time.getSeconds()
 
