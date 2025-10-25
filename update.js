@@ -2,7 +2,6 @@ import csv from "csv-parser";
 import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
 import { Readable } from "stream";
-import fetch from "node-fetch";
 import AdmZip from "adm-zip";
 
 dotenv.config();

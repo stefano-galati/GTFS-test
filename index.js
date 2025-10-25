@@ -1,5 +1,4 @@
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
-import fetch from "node-fetch";
 import dotenv from "dotenv";
 import { MongoClient } from "mongodb";
 
